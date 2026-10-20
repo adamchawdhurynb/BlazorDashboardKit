@@ -65,6 +65,11 @@
     scrollbar-color: var(--bdk-border) transparent;
 }
 
+/* Wraps the widget's content only to make it inert in edit mode; it takes no part in layout. */
+.widget-body {
+    display: contents;
+}
+
 /* ── Static fallback layout ──
    When GridStack's JS has not positioned items (static SSR, prerender, and the
    pre-interactive flash on Server/WASM), gridstack.min.css leaves items

@@ -62,6 +62,9 @@
         </div>
         }
     }
+    @* Inert in edit mode, so the widget's own links and buttons can't be clicked or tabbed to
+       while the dashboard is being arranged. display: contents keeps it out of the layout. *@
+    <div class="widget-body" inert="@EditMode">
     <ErrorBoundary @ref="_errorBoundary">
         <ChildContent>
             <DynamicComponent @key="Placement.Id"
@@ -92,6 +95,7 @@
             }
         </ErrorContent>
     </ErrorBoundary>
+    </div>
 </div>
 
 @if (EditMode && ShowDebugInfo)

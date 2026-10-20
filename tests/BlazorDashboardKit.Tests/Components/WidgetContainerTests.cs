@@ -199,4 +199,16 @@ public class WidgetContainerTests : TestContext
         var cut = Render(Probe(alwaysInteractive: true), editMode: true, readOnly: false, hostInteractive: false);
         Assert.Contains("RO", cut.Find(".ro-probe").TextContent);
     }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void Widget_Body_Is_Inert_Only_In_Edit_Mode(bool editMode, bool expectInert)
+    {
+        // While the dashboard is being arranged, the widget's own links and buttons
+        // must not be clickable or reachable by Tab.
+        var cut = Render(Probe(alwaysInteractive: false), editMode, readOnly: false, hostInteractive: true);
+        Assert.Equal(expectInert, cut.Find(".widget-body").HasAttribute("inert"));
+        Assert.NotNull(cut.Find(".widget-body .ro-probe")); // the widget renders inside it
+    }
 }
