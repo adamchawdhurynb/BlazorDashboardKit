@@ -15,6 +15,21 @@
 }
 else
 {
+@if (ToolbarTemplate is not null || ToolbarComponent is not null)
+{
+    var toolbarCtx = BuildToolbarContext();
+    @if (ToolbarTemplate is not null)
+    {
+        @ToolbarTemplate(toolbarCtx)
+    }
+    else
+    {
+        <DynamicComponent Type="ToolbarComponent"
+                          Parameters="@(new Dictionary<string, object> { ["Context"] = toolbarCtx })" />
+    }
+}
+else
+{
 <div class="dashboard-header d-flex justify-content-between align-items-center mb-4">
     <div class="d-flex align-items-center gap-2">
         @if (_collection is not null && _collection.Dashboards.Count > 1)
@@ -108,6 +123,7 @@ else
         }
     </div>
 </div>
+}
 
 @* The class never changes after the first render: GridStack adds its own classes to this
    element (grid-stack-animate, the column class, ...), and any re-render that changed the
@@ -217,6 +233,7 @@ else
     [Parameter, EditorRequired] public string OwnerKey { get; set; } = default!;
     [Parameter] public bool EditMode { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
+
     /// <summary>Opt-in: show the per-widget placement debug label in edit mode. Off by default.</summary>
     [Parameter] public bool ShowDebugInfo { get; set; }
     /// <summary>Tune the grid (columns, cell height, margin, responsiveness). Defaults match the kit's built-in behaviour.</summary>
@@ -243,6 +260,10 @@ else
     [Parameter] public RenderFragment<WidgetPickerContext>? WidgetPickerTemplate { get; set; }
     /// <summary>Override the Add-Widget picker (component; gets [Parameter] WidgetPickerContext Context).</summary>
     [Parameter] public Type? WidgetPickerComponent { get; set; }
+    /// <summary>Override the whole dashboard toolbar (RenderFragment).</summary>
+    [Parameter] public RenderFragment<DashboardToolbarContext>? ToolbarTemplate { get; set; }
+    /// <summary>Override the whole dashboard toolbar (component; gets [Parameter] DashboardToolbarContext Context). Ignored when ToolbarTemplate is set.</summary>
+    [Parameter] public Type? ToolbarComponent { get; set; }
     /// <summary>Override the config-panel shell/chrome (RenderFragment); the kit still owns the working copy + Save/Cancel.</summary>
     [Parameter] public RenderFragment<WidgetConfigShellContext>? ConfigPanelTemplate { get; set; }
     /// <summary>Override the config-panel shell (component; gets [Parameter] WidgetConfigShellContext Context).</summary>
@@ -367,6 +388,7 @@ else
 
     private async Task EnterEditMode()
     {
+        if (ReadOnly || EditMode) return;
         EditMode = true;
         await JsInterop.SetEditModeAsync(true, Interactive, _disposeCts.Token);
     }
@@ -381,6 +403,23 @@ else
             ApplyGridChanges(compacted);
         await SaveDashboard();
     }
+
+    private DashboardToolbarContext BuildToolbarContext() => new(
+        (IReadOnlyList<DashboardDefinition>?)_collection?.Dashboards ?? new[] { _activeDashboard! },
+        _activeDashboard!,
+        EditMode,
+        ReadOnly,
+        _widgetEditMode,
+        _availableWidgets,
+        EventCallback.Factory.Create(this, EnterEditMode),
+        EventCallback.Factory.Create(this, ExitEditMode),
+        EventCallback.Factory.Create<string>(this, SwitchTo),
+        EventCallback.Factory.Create(this, AddDashboard),
+        EventCallback.Factory.Create<string>(this, Rename),
+        EventCallback.Factory.Create(this, DeleteActiveDashboard),
+        EventCallback.Factory.Create(this, ExportDashboard),
+        EventCallback.Factory.Create<string>(this, ImportJson),
+        EventCallback.Factory.Create<WidgetDescriptor>(this, AddWidget));
 
     [JSInvokable]
     public async Task OnGridChanged(string changesJson)
@@ -628,16 +667,19 @@ else
         return Task.CompletedTask;
     }
 
-    private async Task OnDashboardNameChanged(ChangeEventArgs e)
+    private Task OnDashboardNameChanged(ChangeEventArgs e) => Rename(e.Value?.ToString());
+
+    private async Task Rename(string? name)
     {
         if (_activeDashboard is null) return;
-        var newName = e.Value?.ToString()?.Trim();
+        var newName = name?.Trim();
         if (!string.IsNullOrEmpty(newName))
         {
             _activeDashboard.Name = newName;
             await SaveDashboard();
         }
     }
+
 
     // Clears transient per-dashboard UI state so it can't leak across a switch.
     private void ResetTransientState()
@@ -650,10 +692,11 @@ else
         _confirmDeleteDash = false;
     }
 
-    private async Task SwitchDashboard(ChangeEventArgs e)
+    private Task SwitchDashboard(ChangeEventArgs e) => SwitchTo(e.Value?.ToString());
+
+    private async Task SwitchTo(string? id)
     {
         if (_collection is null) return;
-        var id = e.Value?.ToString();
         var target = _collection.Dashboards.FirstOrDefault(d => d.Id == id);
         if (target is null || ReferenceEquals(target, _activeDashboard)) return;
 
@@ -724,6 +767,12 @@ else
     {
         _actionsOpen = false;
         var json = await JsInterop.ReadFileAsTextAsync(_importFileInput, Interactive, _disposeCts.Token);
+        await ImportJson(json);
+    }
+
+    // Replaces the active dashboard with an exported one (the export file's JSON text).
+    private async Task ImportJson(string? json)
+    {
         if (string.IsNullOrWhiteSpace(json)) return;
         if (_activeDashboard is null || _collection is null) return;
 

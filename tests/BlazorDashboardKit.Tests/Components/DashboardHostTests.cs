@@ -680,6 +680,112 @@ public class DashboardHostTests : TestContext
     }
 
     [Fact]
+    public async Task ToolbarTemplate_Override_Replaces_The_Default_Toolbar_And_Actions_Flow()
+    {
+        var store = new InMemoryDashboardStore();
+        var js = new RecordingJsRuntime();
+        Services.AddSingleton<IDashboardStore>(store);
+        Services.AddSingleton<IWidgetAccessControl, AllowAllWidgetAccessControl>();
+        Services.AddSingleton(new WidgetRegistry(new[]
+            { new WidgetDescriptor { Type = "Test", Name = "Test", Category = "T", ComponentType = typeof(TestWidget) } }));
+        Services.AddScoped<DashboardService>();
+        Services.AddScoped(_ => new DashboardJsInterop(js));
+
+        BlazorDashboardKit.Components.DashboardToolbarContext? ctx = null;
+        RenderFragment<BlazorDashboardKit.Components.DashboardToolbarContext> tpl = c => b =>
+        {
+            ctx = c;
+            b.OpenElement(0, "div");
+            b.AddAttribute(1, "class", "my-toolbar");
+            b.AddContent(2, c.Active.Name);
+            b.CloseElement();
+        };
+
+        var cut = RenderComponent<BlazorDashboardKit.Components.DashboardHost>(p => p
+            .Add(x => x.OwnerKey, "owner-1")
+            .Add(x => x.ToolbarTemplate, tpl));
+        cut.WaitForState(() => js.InitGridCalls == 1, TimeSpan.FromSeconds(5));
+
+        Assert.NotEmpty(cut.FindAll(".my-toolbar"));          // override rendered
+        Assert.Empty(cut.FindAll(".dashboard-header"));       // default toolbar gone
+        Assert.False(ctx!.EditMode);
+        Assert.False(ctx.CanDelete);                          // only one dashboard
+
+        await cut.InvokeAsync(() => ctx.EnterEditMode.InvokeAsync());
+        Assert.True(ctx.EditMode);
+        Assert.Contains(js.ModuleCalls, c => c.Identifier == "setEditMode" && Equals(c.Args[0], true));
+
+        await cut.InvokeAsync(() => ctx.AddWidget.InvokeAsync(ctx.AvailableWidgets[0]));
+        cut.WaitForState(() => cut.FindAll(".grid-stack-item").Count == 1, TimeSpan.FromSeconds(5));
+
+        await cut.InvokeAsync(() => ctx.Rename.InvokeAsync("  Renamed  "));
+        Assert.Equal("Renamed", ctx.Active.Name);
+
+        await cut.InvokeAsync(() => ctx.AddDashboard.InvokeAsync());
+        Assert.Equal(2, ctx.Dashboards.Count);
+        Assert.True(ctx.CanDelete);
+
+        var first = ctx.Dashboards[0];
+        await cut.InvokeAsync(() => ctx.Switch.InvokeAsync(first.Id));
+        Assert.Same(first, ctx.Active);
+
+        await cut.InvokeAsync(() => ctx.DeleteActive.InvokeAsync());
+        Assert.Single(ctx.Dashboards);
+
+        await cut.InvokeAsync(() => ctx.ExitEditMode.InvokeAsync());
+        Assert.False(ctx.EditMode);
+
+        var saved = (await store.LoadAsync("owner-1"))!;
+        Assert.Single(saved.Dashboards);
+        Assert.NotEqual(first.Id, saved.Dashboards[0].Id);   // the active (first) one was deleted
+    }
+
+    [Fact]
+    public void ToolbarComponent_Override_Replaces_The_Default_Toolbar_And_Actions_Flow()
+    {
+        var js = new RecordingJsRuntime();
+        Services.AddSingleton<IDashboardStore>(new InMemoryDashboardStore());
+        Services.AddSingleton<IWidgetAccessControl, AllowAllWidgetAccessControl>();
+        Services.AddSingleton(new WidgetRegistry(Array.Empty<WidgetDescriptor>()));
+        Services.AddScoped<DashboardService>();
+        Services.AddScoped(_ => new DashboardJsInterop(js));
+
+        var cut = RenderComponent<BlazorDashboardKit.Components.DashboardHost>(p => p
+            .Add(x => x.OwnerKey, "owner-1")
+            .Add(x => x.ToolbarComponent, typeof(TestToolbarComponent)));
+        cut.WaitForState(() => js.InitGridCalls == 1, TimeSpan.FromSeconds(5));
+
+        Assert.Empty(cut.FindAll(".dashboard-header"));
+        Assert.Contains(":viewing", cut.Find(".custom-toolbar").TextContent);
+
+        cut.Find("button.custom-edit").Click();
+        cut.WaitForState(() => cut.Find(".custom-toolbar").TextContent.Contains(":editing"),
+            TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public void Toolbar_Context_Cannot_Enter_Edit_Mode_When_ReadOnly()
+    {
+        var js = new RecordingJsRuntime();
+        Services.AddSingleton<IDashboardStore>(new InMemoryDashboardStore());
+        Services.AddSingleton<IWidgetAccessControl, AllowAllWidgetAccessControl>();
+        Services.AddSingleton(new WidgetRegistry(Array.Empty<WidgetDescriptor>()));
+        Services.AddScoped<DashboardService>();
+        Services.AddScoped(_ => new DashboardJsInterop(js));
+
+        var cut = RenderComponent<BlazorDashboardKit.Components.DashboardHost>(p => p
+            .Add(x => x.OwnerKey, "owner-1")
+            .Add(x => x.ReadOnly, true)
+            .Add(x => x.ToolbarComponent, typeof(TestToolbarComponent)));
+        cut.WaitForState(() => cut.FindAll(".custom-toolbar").Count == 1, TimeSpan.FromSeconds(5));
+
+        cut.Find("button.custom-edit").Click();
+
+        Assert.Contains(":viewing", cut.Find(".custom-toolbar").TextContent);
+        Assert.DoesNotContain(js.ModuleCalls, c => c.Identifier == "setEditMode");
+    }
+
+    [Fact]
     public void EmptyTemplate_Override_Replaces_The_Default_Empty_State()
     {
         var js = new RecordingJsRuntime();
