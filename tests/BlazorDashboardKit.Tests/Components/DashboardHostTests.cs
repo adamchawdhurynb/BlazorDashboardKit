@@ -741,6 +741,42 @@ public class DashboardHostTests : TestContext
     }
 
     [Fact]
+    public async Task MaxDashboardNameLength_Cuts_Renamed_And_Imported_Names()
+    {
+        var store = new InMemoryDashboardStore();
+        var js = new RecordingJsRuntime();
+        Services.AddSingleton<IDashboardStore>(store);
+        Services.AddSingleton<IWidgetAccessControl, AllowAllWidgetAccessControl>();
+        Services.AddSingleton(new WidgetRegistry(Array.Empty<WidgetDescriptor>()));
+        Services.AddScoped<DashboardService>();
+        Services.AddScoped(_ => new DashboardJsInterop(js));
+
+        BlazorDashboardKit.Components.DashboardToolbarContext? ctx = null;
+        RenderFragment<BlazorDashboardKit.Components.DashboardToolbarContext> tpl = c => b => ctx = c;
+
+        var cut = RenderComponent<BlazorDashboardKit.Components.DashboardHost>(p => p
+            .Add(x => x.OwnerKey, "owner-1")
+            .Add(x => x.MaxDashboardNameLength, 10)
+            .Add(x => x.ToolbarTemplate, tpl));
+        cut.WaitForState(() => js.InitGridCalls == 1, TimeSpan.FromSeconds(5));
+        Assert.Equal(10, ctx!.MaxNameLength);
+
+        // Cut to 10, then the trailing space the cut leaves is trimmed too.
+        await cut.InvokeAsync(() => ctx.Rename.InvokeAsync("  Quarterly results  "));
+        Assert.Equal("Quarterly", ctx.Active.Name);
+
+        await cut.InvokeAsync(() => ctx.Import.InvokeAsync(
+            """{"Name":"An imported dashboard","Widgets":[]}"""));
+        Assert.Equal("An importe", ctx.Active.Name);
+
+        // A name that trims to nothing falls back to the default.
+        await cut.InvokeAsync(() => ctx.Import.InvokeAsync("""{"Name":"   ","Widgets":[]}"""));
+        Assert.Equal("Imported Dashboard", ctx.Active.Name);
+
+        Assert.Equal(ctx.Active.Name, (await store.LoadAsync("owner-1"))!.Dashboards[0].Name);
+    }
+
+    [Fact]
     public void ToolbarComponent_Override_Replaces_The_Default_Toolbar_And_Actions_Flow()
     {
         var js = new RecordingJsRuntime();

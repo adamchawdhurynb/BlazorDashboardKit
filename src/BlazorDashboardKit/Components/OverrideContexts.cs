@@ -22,7 +22,8 @@ public sealed record WidgetPickerContext(
 /// state the toolbar shows and every action it can take. <see cref="Busy"/> is true
 /// while a widget is in its own edit sub-mode; the kit's toolbar disables its
 /// actions then. <see cref="Import"/> takes the export file's JSON text and
-/// replaces the active dashboard with it.
+/// replaces the active dashboard with it. <see cref="MaxNameLength"/> is the
+/// host's limit on dashboard names (null for none); the kit trims longer names.
 /// </summary>
 public sealed record DashboardToolbarContext(
     System.Collections.Generic.IReadOnlyList<DashboardDefinition> Dashboards,
@@ -30,6 +31,7 @@ public sealed record DashboardToolbarContext(
     bool EditMode,
     bool ReadOnly,
     bool Busy,
+    int? MaxNameLength,
     System.Collections.Generic.IReadOnlyList<WidgetDescriptor> AvailableWidgets,
     EventCallback EnterEditMode,
     EventCallback ExitEditMode,
