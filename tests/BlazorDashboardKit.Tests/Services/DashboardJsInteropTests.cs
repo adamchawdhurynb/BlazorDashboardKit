@@ -21,18 +21,19 @@ public class DashboardJsInteropTests
     private sealed class FakeJsObjectReference : IJSObjectReference
     {
         public List<(string Identifier, object?[] Args)> Invocations { get; } = new();
+        /// <summary>Return values by identifier; anything not listed returns <c>default</c>.</summary>
+        public Dictionary<string, object?> Results { get; } = new();
         public int DisposeCount { get; private set; }
 
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
-        {
-            Invocations.Add((identifier, args ?? Array.Empty<object?>()));
-            return new ValueTask<TValue>(default(TValue)!);
-        }
+            => InvokeAsync<TValue>(identifier, CancellationToken.None, args);
 
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
         {
             Invocations.Add((identifier, args ?? Array.Empty<object?>()));
-            return new ValueTask<TValue>(default(TValue)!);
+            return Results.TryGetValue(identifier, out var result)
+                ? new ValueTask<TValue>((TValue)result!)
+                : new ValueTask<TValue>(default(TValue)!);
         }
 
         public ValueTask DisposeAsync()
@@ -120,6 +121,20 @@ public class DashboardJsInteropTests
 
         Assert.Empty(js.Invocations);          // never imported the module
         Assert.Empty(js.Module.Invocations);   // never invoked anything on it
+    }
+
+    [Fact]
+    public async Task SetEditMode_Returns_The_Compacted_Layout_From_The_Module()
+    {
+        var js = new FakeJsRuntime();
+        js.Module.Results["setEditMode"] = "[]";
+        var sut = new DashboardJsInterop(js);
+        await sut.InitGridAsync("grid-el", interactive: true, default);
+
+        var layout = await sut.SetEditModeAsync(false, interactive: true, default);
+
+        Assert.Equal("[]", layout);
+        Assert.Null(await sut.SetEditModeAsync(false, interactive: false, default));
     }
 
     [Fact]

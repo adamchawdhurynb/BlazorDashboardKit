@@ -69,11 +69,15 @@ public sealed class DashboardJsInterop : IAsyncDisposable
             options ?? new Models.DashboardGridOptions());
     }
 
-    public async Task SetEditModeAsync(bool editMode, bool interactive, CancellationToken ct)
+    /// <summary>
+    /// Switches the grid in or out of edit mode. Leaving it compacts the grid and
+    /// returns the resulting layout as JSON (OnGridChanged's shape); otherwise null.
+    /// </summary>
+    public async Task<string?> SetEditModeAsync(bool editMode, bool interactive, CancellationToken ct)
     {
         if (!interactive || _module is null)
-            return;
-        await _module.InvokeVoidAsync("setEditMode", ct, editMode);
+            return null;
+        return await _module.InvokeAsync<string?>("setEditMode", ct, editMode);
     }
 
     public async Task DestroyGridAsync(bool interactive, CancellationToken ct)

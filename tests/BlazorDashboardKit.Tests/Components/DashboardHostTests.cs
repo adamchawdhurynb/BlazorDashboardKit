@@ -585,6 +585,31 @@ public class DashboardHostTests : TestContext
     }
 
     [Fact]
+    public async Task Done_Saves_The_Layout_The_Grid_Compacted_To()
+    {
+        // Leaving edit mode compacts the grid in JS, which returns the new layout;
+        // the host applies it and saves once.
+        var store = new InMemoryDashboardStore();
+        var js = new RecordingJsRuntime
+        {
+            SetEditModeResult = """[{"id":"w1","x":0,"y":0,"w":2,"h":2},{"id":"w2","x":2,"y":0,"w":3,"h":1}]"""
+        };
+        RenderHostWithSeededWidgets(store, js, out var cut);
+
+        cut.FindAll("button").First(b => b.TextContent.Trim() == "Done").Click();
+        cut.WaitForState(() => cut.FindAll("button").Any(b => b.TextContent.Trim() == "Edit"),
+            TimeSpan.FromSeconds(5));
+
+        var setEditMode = Assert.Single(js.ModuleCalls, c => c.Identifier == "setEditMode");
+        Assert.Equal(new object?[] { false }, setEditMode.Args);
+        var d = (await store.LoadAsync("owner-1"))!.Dashboards[0];
+        var w2 = d.Widgets.First(w => w.Id == "w2");
+        Assert.Equal(2, w2.Offset);
+        Assert.Equal(0, w2.Row);
+        Assert.Equal(0, d.Widgets.First(w => w.Id == "w1").Offset);
+    }
+
+    [Fact]
     public async Task OnGridChanged_Ignores_Malformed_Json_Without_Throwing()
     {
         var store = new InMemoryDashboardStore();
@@ -802,6 +827,8 @@ public class DashboardHostTests : TestContext
         public DashboardGridOptions? LastGridOptions => _module.LastGridOptions;
         /// <summary>Every module call after the import, in order.</summary>
         public List<(string Identifier, object?[] Args)> ModuleCalls => _module.Calls;
+        /// <summary>What setEditMode returns: the compacted layout JSON when leaving edit mode.</summary>
+        public string? SetEditModeResult { set => _module.SetEditModeResult = value; }
 
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
             => InvokeAsync<TValue>(identifier, CancellationToken.None, args);
@@ -820,6 +847,7 @@ public class DashboardHostTests : TestContext
             public int InitGridCalls;
             public DashboardGridOptions? LastGridOptions;
             public readonly List<(string Identifier, object?[] Args)> Calls = new();
+            public string? SetEditModeResult;
 
             public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
                 => InvokeAsync<TValue>(identifier, CancellationToken.None, args);
@@ -834,6 +862,8 @@ public class DashboardHostTests : TestContext
                     // initGrid args: [containerId, dotNetRef, editMode, DashboardGridOptions]
                     LastGridOptions = args?.OfType<DashboardGridOptions>().FirstOrDefault();
                 }
+                if (identifier == "setEditMode" && SetEditModeResult is not null && typeof(TValue) == typeof(string))
+                    return new ValueTask<TValue>((TValue)(object)SetEditModeResult);
                 return new ValueTask<TValue>(default(TValue)!);
             }
 

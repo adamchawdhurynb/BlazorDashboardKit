@@ -375,14 +375,26 @@ else
     {
         EditMode = false;
         _widgetEditMode = false;
-        await JsInterop.SetEditModeAsync(false, Interactive, _disposeCts.Token);
+        // The grid compacts as edit mode ends; take its new positions before the one save.
+        var compacted = await JsInterop.SetEditModeAsync(false, Interactive, _disposeCts.Token);
+        if (compacted is not null)
+            ApplyGridChanges(compacted);
         await SaveDashboard();
     }
 
     [JSInvokable]
     public async Task OnGridChanged(string changesJson)
     {
-        if (_activeDashboard is null) return;
+        if (!ApplyGridChanges(changesJson)) return;
+
+        await SaveDashboard();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // Copies GridStack's positions onto the placements. False when there was nothing to apply.
+    private bool ApplyGridChanges(string changesJson)
+    {
+        if (_activeDashboard is null) return false;
 
         // changesJson crosses the JS interop boundary; a malformed payload must
         // not throw out of this [JSInvokable] callback.
@@ -393,9 +405,9 @@ else
         }
         catch (JsonException)
         {
-            return;
+            return false;
         }
-        if (changes is null || changes.Count == 0) return;
+        if (changes is null || changes.Count == 0) return false;
 
         foreach (var change in changes)
         {
@@ -411,9 +423,7 @@ else
             placement.ColumnSize = change.W;
             placement.RowSpan = change.H;
         }
-
-        await SaveDashboard();
-        await InvokeAsync(StateHasChanged);
+        return true;
     }
 
     private sealed class GridChange

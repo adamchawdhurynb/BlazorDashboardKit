@@ -138,20 +138,7 @@ export async function initGrid(containerId, dotNetHelper, editMode, options) {
         if (_changeBatch) clearTimeout(_changeBatch);
         _changeBatch = setTimeout(function () {
             _changeBatch = null;
-            var changes = [];
-            var allNodes = grid.getGridItems();
-            allNodes.forEach(function (el) {
-                var node = el.gridstackNode;
-                if (!node) return;
-                changes.push({
-                    id: node.id || '',
-                    x: node.x || 0,
-                    y: node.y || 0,
-                    w: node.w || 1,
-                    h: node.h || 1
-                });
-            });
-            _dotNetHelper.invokeMethodAsync('OnGridChanged', JSON.stringify(changes));
+            _dotNetHelper.invokeMethodAsync('OnGridChanged', JSON.stringify(collectLayout(grid)));
         }, 100);
     });
 
@@ -170,10 +157,43 @@ export async function initGrid(containerId, dotNetHelper, editMode, options) {
     _grid = grid;
 }
 
+// Every widget's position, in the shape OnGridChanged reads.
+function collectLayout(grid) {
+    var changes = [];
+    grid.getGridItems().forEach(function (el) {
+        var node = el.gridstackNode;
+        if (!node) return;
+        changes.push({
+            id: node.id || '',
+            x: node.x || 0,
+            y: node.y || 0,
+            w: node.w || 1,
+            h: node.h || 1
+        });
+    });
+    return changes;
+}
+
+// Leaving edit mode compacts the grid: turning float off makes GridStack slide each widget
+// straight up into any free space above it (same column, no overlaps; locked widgets stay
+// put), animated by its own transition. Float goes back on so the next edit places freely.
+// Returns the compacted layout as JSON so the kit saves it in one go; the change event the
+// compaction raised is dropped, since it would only save the same layout again.
 export function setEditMode(editMode) {
-    if (!_grid) return;
+    if (!_grid) return null;
+    var layout = null;
+    if (!editMode) {
+        _grid.float(false);
+        _grid.float(true);
+        if (_changeBatch) {
+            clearTimeout(_changeBatch);
+            _changeBatch = null;
+        }
+        layout = JSON.stringify(collectLayout(_grid));
+    }
     _grid.setStatic(!editMode);
     _grid.el.classList.toggle('dashboard-edit', !!editMode);
+    return layout;
 }
 
 export function destroyGrid() {
