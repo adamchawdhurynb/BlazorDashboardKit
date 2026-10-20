@@ -1,0 +1,83 @@
+name: Prod fork
+
+# This fork's own workflow; the upstream ones only run on main, which tracks Kukks's repo.
+# - test: builds and tests the prod branch on every push.
+# - upstream-release: every Monday (and on demand), checks Kukks/BlazorDashboardKit for a
+#   release tag (v*) newer than the one this branch is built on, and opens an issue when
+#   there is one. Scheduled runs only happen on the default branch, so prod must be it.
+
+on:
+  push:
+    branches: [ prod ]
+  schedule:
+    - cron: '0 13 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  test:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet test tests/BlazorDashboardKit.Tests/BlazorDashboardKit.Tests.csproj --configuration Release
+
+  upstream-release:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare with the newest upstream release
+        id: check
+        run: |
+          git fetch --no-tags https://github.com/Kukks/BlazorDashboardKit.git '+refs/tags/v*:refs/tags/v*'
+          latest=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          base=$(git describe --tags --abbrev=0 --match 'v*' HEAD)
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor "$latest" HEAD; then
+            echo "Up to date: built on $base, newest upstream release is $latest."
+            echo "behind=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Behind: built on $base, newest upstream release is $latest."
+            echo "behind=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open an issue for the new release
+        if: steps.check.outputs.behind == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LATEST: ${{ steps.check.outputs.latest }}
+          BASE: ${{ steps.check.outputs.base }}
+        run: |
+          title="Upstream release $LATEST is available"
+          if gh issue list --state all --search "\"$title\" in:title" --json number --jq '.[].number' | grep -q .; then
+            echo "An issue for $LATEST already exists."
+            exit 0
+          fi
+          gh issue create --title "$title" --body "$(cat <<EOF
+          Kukks/BlazorDashboardKit has released **$LATEST**. The \`prod\` branch is built on **$BASE**.
+
+          What changed: https://github.com/Kukks/BlazorDashboardKit/compare/$BASE...$LATEST (see also CHANGELOG.md).
+
+          To take it, in the clone under the host app's \`src/BlazorDashboardKit-repo\`:
+
+          \`\`\`
+          git fetch upstream --tags
+          git rebase $LATEST
+          dotnet test tests/BlazorDashboardKit.Tests/BlazorDashboardKit.Tests.csproj
+          git push --force-with-lease
+          \`\`\`
+
+          Then rebuild the host app and check the dashboard.
+          EOF
+          )"
