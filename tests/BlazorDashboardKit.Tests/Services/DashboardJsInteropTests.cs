@@ -111,6 +111,7 @@ public class DashboardJsInteropTests
         var sut = new DashboardJsInterop(js);
 
         await sut.SetEditModeAsync(true, interactive: true, default);
+        await sut.SetWidgetLockedAsync("w1", true, interactive: true, default);
         await sut.DestroyGridAsync(interactive: true, default);
         await sut.AddGridWidgetAsync(default, interactive: true, default);
         await sut.RemoveGridWidgetAsync(default, interactive: true, default);
@@ -119,6 +120,19 @@ public class DashboardJsInteropTests
 
         Assert.Empty(js.Invocations);          // never imported the module
         Assert.Empty(js.Module.Invocations);   // never invoked anything on it
+    }
+
+    [Fact]
+    public async Task SetWidgetLocked_Passes_The_Widget_Id_And_Lock_State()
+    {
+        var js = new FakeJsRuntime();
+        var sut = new DashboardJsInterop(js);
+        await sut.InitGridAsync("grid-el", interactive: true, default);
+
+        await sut.SetWidgetLockedAsync("w1", true, interactive: true, default);
+
+        var call = Assert.Single(js.Module.Invocations.Where(i => i.Identifier == "setWidgetLocked"));
+        Assert.Equal(new object?[] { "w1", true }, call.Args);
     }
 
     [Fact]

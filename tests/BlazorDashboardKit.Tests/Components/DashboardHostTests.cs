@@ -377,6 +377,26 @@ public class DashboardHostTests : TestContext
     }
 
     [Fact]
+    public async Task Locking_A_Widget_Updates_It_In_Place_Without_Rebuilding_The_Grid()
+    {
+        // A rebuild flashed every widget through the static fallback layout; the lock
+        // must reach GridStack for the one widget only, and still be persisted.
+        var store = new InMemoryDashboardStore();
+        var js = new RecordingJsRuntime();
+        RenderHostWithSeededWidgets(store, js, out var cut);
+
+        cut.FindAll("button[title='Lock widget']")[0].Click();
+        cut.WaitForState(() => js.ModuleCalls.Any(c => c.Identifier == "setWidgetLocked"),
+            TimeSpan.FromSeconds(5));
+
+        var call = Assert.Single(js.ModuleCalls, c => c.Identifier == "setWidgetLocked");
+        Assert.Equal(new object?[] { "w1", true }, call.Args);
+        Assert.Equal(1, js.InitGridCalls);                                     // no rebuild
+        Assert.DoesNotContain(js.ModuleCalls, c => c.Identifier == "destroyGrid");
+        Assert.True((await store.LoadAsync("owner-1"))!.Dashboards[0].Widgets.First(w => w.Id == "w1").Locked);
+    }
+
+    [Fact]
     public void Custom_GridOptions_Are_Forwarded_To_The_Grid_Init()
     {
         var js = new RecordingJsRuntime();
@@ -780,6 +800,8 @@ public class DashboardHostTests : TestContext
         private readonly RecordingModule _module = new();
         public int InitGridCalls => _module.InitGridCalls;
         public DashboardGridOptions? LastGridOptions => _module.LastGridOptions;
+        /// <summary>Every module call after the import, in order.</summary>
+        public List<(string Identifier, object?[] Args)> ModuleCalls => _module.Calls;
 
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
             => InvokeAsync<TValue>(identifier, CancellationToken.None, args);
@@ -797,6 +819,7 @@ public class DashboardHostTests : TestContext
         {
             public int InitGridCalls;
             public DashboardGridOptions? LastGridOptions;
+            public readonly List<(string Identifier, object?[] Args)> Calls = new();
 
             public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
                 => InvokeAsync<TValue>(identifier, CancellationToken.None, args);
@@ -804,6 +827,7 @@ public class DashboardHostTests : TestContext
             public ValueTask<TValue> InvokeAsync<TValue>(
                 string identifier, CancellationToken cancellationToken, object?[]? args)
             {
+                Calls.Add((identifier, args ?? Array.Empty<object?>()));
                 if (identifier == "initGrid")
                 {
                     InitGridCalls++;

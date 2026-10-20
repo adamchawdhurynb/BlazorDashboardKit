@@ -561,8 +561,9 @@ else
     {
         placement.Locked = !placement.Locked;
         await SaveDashboard();
-        // Rebuild so GridStack picks up the changed gs-locked/no-move/no-resize.
-        await ResetGrid();
+        // Update the one widget in place. Rebuilding the grid instead flashed every widget
+        // through the static fallback layout.
+        await JsInterop.SetWidgetLockedAsync(placement.Id, placement.Locked, Interactive, _disposeCts.Token);
     }
 
     private async Task OnWidgetConfigChanged(WidgetPlacement placement, JsonObject config)

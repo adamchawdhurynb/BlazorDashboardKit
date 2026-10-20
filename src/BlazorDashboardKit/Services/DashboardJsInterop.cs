@@ -83,6 +83,13 @@ public sealed class DashboardJsInterop : IAsyncDisposable
         await _module.InvokeVoidAsync("destroyGrid", ct);
     }
 
+    public async Task SetWidgetLockedAsync(string widgetId, bool locked, bool interactive, CancellationToken ct)
+    {
+        if (!interactive || _module is null)
+            return;
+        await _module.InvokeVoidAsync("setWidgetLocked", ct, widgetId, locked);
+    }
+
     public async Task AddGridWidgetAsync(ElementReference element, bool interactive, CancellationToken ct)
     {
         if (!interactive || _module is null)

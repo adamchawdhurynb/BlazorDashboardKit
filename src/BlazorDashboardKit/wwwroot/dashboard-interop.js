@@ -192,6 +192,15 @@ export function destroyGrid() {
     _dotNetHelper = null;
 }
 
+// Locks or unlocks one widget in place: no move, no resize, and other widgets can't push it.
+export function setWidgetLocked(id, locked) {
+    if (!_grid) return;
+    var el = _grid.getGridItems().find(function (e) {
+        return e.gridstackNode && e.gridstackNode.id === id;
+    });
+    if (el) _grid.update(el, { locked: locked, noMove: locked, noResize: locked });
+}
+
 export function addGridWidget(element) {
     if (!_grid || !element) return;
     _grid.makeWidget(element);
