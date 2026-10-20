@@ -103,7 +103,8 @@ export async function initGrid(containerId, dotNetHelper, editMode, options) {
         cellHeight: o.cellHeight || 146,
         margin: (o.margin == null ? 8 : o.margin),
         float: (o.float == null ? true : o.float),
-        animate: true,
+        // Off for the first layout; switched on below once it has been painted.
+        animate: false,
         draggable: { handle: '.widget-drag-handle' },
         resizable: { handles: 'e,se,s,sw,w' },
         staticGrid: !editMode,
@@ -113,6 +114,22 @@ export async function initGrid(containerId, dotNetHelper, editMode, options) {
             columnMax: columns
         }
     }, containerElement);
+
+    // The container's two changing classes live here, not in Blazor's markup: a Blazor
+    // re-render that changed the class attribute would wipe the classes GridStack just added
+    // (grid-stack-animate among them, which is what animates moves).
+    containerElement.classList.remove('bdk-grid-static');
+    containerElement.classList.toggle('dashboard-edit', !!editMode);
+
+    // Animation (moves, compaction) goes on only after GridStack's first layout has been
+    // painted. On from the start, every widget visibly shrank from the full-width static
+    // fallback to its grid size on each page load and rebuild.
+    void containerElement.offsetWidth;
+    requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+            if (_grid === grid) grid.setAnimation(true);
+        });
+    });
 
     // Batch change events with a short debounce to avoid multiple rapid calls
     grid.on('change', function (event, items) {
@@ -156,6 +173,7 @@ export async function initGrid(containerId, dotNetHelper, editMode, options) {
 export function setEditMode(editMode) {
     if (!_grid) return;
     _grid.setStatic(!editMode);
+    _grid.el.classList.toggle('dashboard-edit', !!editMode);
 }
 
 export function destroyGrid() {
@@ -164,6 +182,10 @@ export function destroyGrid() {
         _changeBatch = null;
     }
     if (_grid) {
+        // Back to the static fallback layout until the grid is initialized again, without
+        // animating into it.
+        _grid.el.classList.remove('grid-stack-animate');
+        _grid.el.classList.add('bdk-grid-static');
         _grid.destroy(false); // false = don't remove DOM elements (Blazor owns them)
         _grid = null;
     }

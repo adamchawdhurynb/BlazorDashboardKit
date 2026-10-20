@@ -700,11 +700,13 @@ public class DashboardHostTests : TestContext
     }
 
     [Fact]
-    public void Static_Fallback_Class_Is_Cleared_Once_Grid_Is_Live()
+    public void Grid_Container_Class_Is_Never_Changed_By_A_Render()
     {
-        // The container carries `bdk-grid-static` (CSS fallback layout) until
-        // GridStack is initialized. Once live the class MUST be gone, otherwise
-        // its !important rules override GridStack's positioning.
+        // GridStack adds its own classes to the container (grid-stack-animate, the
+        // column class, ...). A re-render that changed the class attribute would wipe
+        // them, so the markup's class stays fixed and dashboard-interop.js owns the two
+        // classes that change: it removes `bdk-grid-static` once the grid is live and
+        // switches `dashboard-edit`.
         var js = new RecordingJsRuntime();
         var descriptor = new WidgetDescriptor
         {
@@ -723,11 +725,12 @@ public class DashboardHostTests : TestContext
             .Add(x => x.EditMode, true));
 
         cut.WaitForState(() => js.InitGridCalls == 1, TimeSpan.FromSeconds(5));
-        cut.WaitForState(
-            () => !cut.Find(".grid-stack").ClassList.Contains("bdk-grid-static"),
-            TimeSpan.FromSeconds(5));
+        Assert.Equal("grid-stack bdk-grid-static", cut.Find(".grid-stack").GetAttribute("class"));
 
-        Assert.DoesNotContain("bdk-grid-static", cut.Find(".grid-stack").ClassList);
+        cut.FindAll("button").First(b => b.TextContent.Trim() == "Done").Click();
+        cut.WaitForState(() => cut.FindAll("button").Any(b => b.TextContent.Trim() == "Edit"),
+            TimeSpan.FromSeconds(5));
+        Assert.Equal("grid-stack bdk-grid-static", cut.Find(".grid-stack").GetAttribute("class"));
     }
 
     [Fact]

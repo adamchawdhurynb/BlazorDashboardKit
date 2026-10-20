@@ -109,7 +109,11 @@ else
     </div>
 </div>
 
-<div id="@_gridContainerId" class="grid-stack @(EditMode ? "dashboard-edit" : "") @(_interactive && _gridInitialized ? null : "bdk-grid-static")">
+@* The class never changes after the first render: GridStack adds its own classes to this
+   element (grid-stack-animate, the column class, ...), and any re-render that changed the
+   attribute would overwrite them. dashboard-interop.js switches dashboard-edit and removes the
+   static-fallback marker bdk-grid-static once the grid is live. *@
+<div id="@_gridContainerId" class="grid-stack bdk-grid-static">
     @if (_activeDashboard is not null && _activeDashboard.Widgets.Count > 0)
     {
         @foreach (var wp in ComputeGridPositions())
@@ -341,14 +345,9 @@ else
             // DotNetObjectReference per ResetGrid call. JS-side callbacks don't care about
             // the generic type; matching InitGrid's <object> signature lets us cache one ref.
             _dotNetRef ??= DotNetObjectReference.Create<object>(this);
+            // initGrid also removes the `bdk-grid-static` marker, so GridStack's
+            // positions take over from the static fallback layout.
             await JsInterop.InitGridAsync(_gridContainerId, interactive: true, _disposeCts.Token, _dotNetRef, EditMode, GridOptions);
-            // GridStack now owns layout: re-render so the static-fallback marker
-            // class (bound to _gridInitialized) is removed. Without this,
-            // OnAfterRenderAsync mutating state alone never re-renders, so the
-            // `bdk-grid-static` !important rules keep overriding GridStack.
-            // Guarded by `!_gridInitialized` above, so this runs once per init
-            // cycle (no render loop).
-            await InvokeAsync(StateHasChanged);
         }
     }
 
