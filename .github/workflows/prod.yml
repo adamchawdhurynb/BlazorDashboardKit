@@ -27,7 +27,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          # 8 is what the kit targets today; 9 and 10 in case an upstream release moves on.
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
       - run: dotnet test tests/BlazorDashboardKit.Tests/BlazorDashboardKit.Tests.csproj --configuration Release
 
   upstream-release:
@@ -39,6 +43,8 @@ jobs:
       issues: write         # report a release that needs merging by hand
     env:
       GH_TOKEN: ${{ github.token }}
+      # gh defaults to the parent repo (Kukks's) in a fork; every gh call here means this one.
+      GH_REPO: ${{ github.repository }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
@@ -95,7 +101,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         if: steps.merge.outputs.result == 'merged'
         with:
-          dotnet-version: '8.0.x'
+          # 8 is what the kit targets today; 9 and 10 in case an upstream release moves on.
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
 
       - name: Test the merged code
         id: test
