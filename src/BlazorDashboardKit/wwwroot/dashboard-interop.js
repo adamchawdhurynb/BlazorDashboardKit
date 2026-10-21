@@ -20,6 +20,7 @@ let _charts = {};
 let _dotNetHelper = null;
 let _changeBatch = null;
 let _float = true;
+let _columns = 12;
 
 // --- Lazy asset injection ---
 //
@@ -99,6 +100,7 @@ export async function initGrid(containerId, dotNetHelper, editMode, options) {
     // Fall back to the kit defaults so older callers / null still work.
     var o = options || {};
     var columns = o.columns || 12;
+    _columns = columns;
     _float = (o.float == null ? true : o.float);
     var grid = globalThis.GridStack.init({
         column: columns,
@@ -136,6 +138,15 @@ export async function initGrid(containerId, dotNetHelper, editMode, options) {
     // Batch change events with a short debounce to avoid multiple rapid calls
     grid.on('change', function (event, items) {
         if (!items || !_dotNetHelper) return;
+        // Below the breakpoint GridStack lays everything out in one column and reports that
+        // as a change; saving it would overwrite the desktop layout (see isFullWidth).
+        if (!isFullWidth(grid)) {
+            if (_changeBatch) {
+                clearTimeout(_changeBatch);
+                _changeBatch = null;
+            }
+            return;
+        }
         // Debounce: collect changes, send once after 100ms of no activity
         if (_changeBatch) clearTimeout(_changeBatch);
         _changeBatch = setTimeout(function () {
@@ -181,8 +192,16 @@ function compactSoon() {
     });
 }
 
+// Whether the grid is showing its full column count. Below the mobile breakpoint GridStack
+// switches to one column and resets every widget to x=0, w=1; that layout is only for display
+// and must never be saved or compacted.
+function isFullWidth(grid) {
+    return grid.getColumn() === _columns;
+}
+
 function compact(grid) {
     if (!_float) return; // gravity already always on
+    if (!isFullWidth(grid)) return;
     grid.float(false);
     grid.float(true);
 }
@@ -207,7 +226,7 @@ function collectLayout(grid) {
 // Entering edit mode compacts the grid (see compactSoon). Leaving it compacts once more, in
 // case a last move's compaction hasn't run yet, and returns the layout as JSON so the kit
 // saves it in one go; a change event still pending is dropped, since it would only save the
-// same layout again.
+// same layout again. Below the breakpoint it returns null: the one-column layout isn't saved.
 export function setEditMode(editMode) {
     if (!_grid) return null;
     var layout = null;
@@ -219,7 +238,8 @@ export function setEditMode(editMode) {
             clearTimeout(_changeBatch);
             _changeBatch = null;
         }
-        layout = JSON.stringify(collectLayout(_grid));
+        if (isFullWidth(_grid))
+            layout = JSON.stringify(collectLayout(_grid));
     }
     _grid.setStatic(!editMode);
     _grid.el.classList.toggle('dashboard-edit', !!editMode);
