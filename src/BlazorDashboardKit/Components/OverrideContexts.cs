@@ -20,8 +20,8 @@ public sealed record WidgetPickerContext(
 /// Context for a custom dashboard toolbar, which replaces the kit's own (picker,
 /// Edit/Done, name box, + Dashboard, Delete, Add Widget, Actions). It carries the
 /// state the toolbar shows and every action it can take. <see cref="Busy"/> is true
-/// while a widget is in its own edit sub-mode; the kit's toolbar disables its
-/// actions then. <see cref="Import"/> takes the export file's JSON text and
+/// while a widget is in its own edit sub-mode, or while an action is still running
+/// (actions called meanwhile are ignored); the kit's toolbar disables its actions then. <see cref="Import"/> takes the export file's JSON text and
 /// replaces the active dashboard with it. <see cref="MaxNameLength"/> is the
 /// host's limit on dashboard names (null for none); the kit trims longer names.
 /// </summary>

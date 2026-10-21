@@ -50,14 +50,14 @@ else
                    value="@_activeDashboard.Name" aria-label="Dashboard name"
                    @onchange="OnDashboardNameChanged" />
             <button class="btn btn-outline-secondary btn-sm" type="button"
-                    title="New dashboard" disabled="@_widgetEditMode" @onclick="AddDashboard">+ Dashboard</button>
+                    title="New dashboard" disabled="@_widgetEditMode" @onclick="() => Exclusive(AddDashboard)">+ Dashboard</button>
             @if (_collection is not null && _collection.Dashboards.Count > 1)
             {
                 @if (_confirmDeleteDash)
                 {
                     <button class="btn btn-danger btn-sm" type="button"
                             title="Confirm delete dashboard" disabled="@_widgetEditMode"
-                            @onclick="DeleteActiveDashboard">Confirm delete</button>
+                            @onclick="() => Exclusive(DeleteActiveDashboard)">Confirm delete</button>
                     <button class="btn btn-outline-secondary btn-sm" type="button"
                             @onclick="() => _confirmDeleteDash = false">Cancel</button>
                 }
@@ -413,23 +413,42 @@ else
         await SaveDashboard();
     }
 
+    // Every toolbar action goes through Exclusive, so a double click (or a second action while
+    // the first still waits on the store or JS) is ignored; Busy reports it to the toolbar.
     private DashboardToolbarContext BuildToolbarContext() => new(
         (IReadOnlyList<DashboardDefinition>?)_collection?.Dashboards ?? new[] { _activeDashboard! },
         _activeDashboard!,
         EditMode,
         ReadOnly,
-        _widgetEditMode,
+        _widgetEditMode || _actionRunning,
         MaxDashboardNameLength,
         _availableWidgets,
-        EventCallback.Factory.Create(this, EnterEditMode),
-        EventCallback.Factory.Create(this, ExitEditMode),
-        EventCallback.Factory.Create<string>(this, SwitchTo),
-        EventCallback.Factory.Create(this, AddDashboard),
-        EventCallback.Factory.Create<string>(this, Rename),
-        EventCallback.Factory.Create(this, DeleteActiveDashboard),
-        EventCallback.Factory.Create(this, ExportDashboard),
-        EventCallback.Factory.Create<string>(this, ImportJson),
-        EventCallback.Factory.Create<WidgetDescriptor>(this, AddWidget));
+        EventCallback.Factory.Create(this, () => Exclusive(EnterEditMode)),
+        EventCallback.Factory.Create(this, () => Exclusive(ExitEditMode)),
+        EventCallback.Factory.Create<string>(this, id => Exclusive(() => SwitchTo(id))),
+        EventCallback.Factory.Create(this, () => Exclusive(AddDashboard)),
+        EventCallback.Factory.Create<string>(this, name => Exclusive(() => Rename(name))),
+        EventCallback.Factory.Create(this, () => Exclusive(DeleteActiveDashboard)),
+        EventCallback.Factory.Create(this, () => Exclusive(ExportDashboard)),
+        EventCallback.Factory.Create<string>(this, json => Exclusive(() => ImportJson(json))),
+        EventCallback.Factory.Create<WidgetDescriptor>(this, d => Exclusive(() => AddWidget(d))));
+
+    private bool _actionRunning;
+
+    // Runs a dashboard action unless one is already running; a call that arrives meanwhile is dropped.
+    private async Task Exclusive(Func<Task> action)
+    {
+        if (_actionRunning) return;
+        _actionRunning = true;
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            _actionRunning = false;
+        }
+    }
 
     [JSInvokable]
     public async Task OnGridChanged(string changesJson)

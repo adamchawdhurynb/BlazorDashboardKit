@@ -777,6 +777,56 @@ public class DashboardHostTests : TestContext
     }
 
     [Fact]
+    public async Task A_Second_Toolbar_Action_While_One_Is_Running_Is_Ignored()
+    {
+        // Double-clicking New Dashboard (or the popup's Delete) must not run the action twice.
+        var store = new GatedStore();
+        var js = new RecordingJsRuntime();
+        Services.AddSingleton<IDashboardStore>(store);
+        Services.AddSingleton<IWidgetAccessControl, AllowAllWidgetAccessControl>();
+        Services.AddSingleton(new WidgetRegistry(Array.Empty<WidgetDescriptor>()));
+        Services.AddScoped<DashboardService>();
+        Services.AddScoped(_ => new DashboardJsInterop(js));
+
+        BlazorDashboardKit.Components.DashboardToolbarContext? ctx = null;
+        RenderFragment<BlazorDashboardKit.Components.DashboardToolbarContext> tpl = c => b => ctx = c;
+        var cut = RenderComponent<BlazorDashboardKit.Components.DashboardHost>(p => p
+            .Add(x => x.OwnerKey, "owner-1")
+            .Add(x => x.ToolbarTemplate, tpl));
+        cut.WaitForState(() => js.InitGridCalls == 1, TimeSpan.FromSeconds(5));
+
+        store.Hold();
+        var first = cut.InvokeAsync(() => ctx!.AddDashboard.InvokeAsync());
+        var second = cut.InvokeAsync(() => ctx!.AddDashboard.InvokeAsync());
+        await second;                                   // dropped, so it doesn't wait
+        cut.WaitForState(() => ctx!.Busy, TimeSpan.FromSeconds(5));
+
+        store.Release();
+        await first;
+        cut.WaitForState(() => !ctx!.Busy, TimeSpan.FromSeconds(5));
+        Assert.Equal(2, ctx!.Dashboards.Count);         // the original plus one
+    }
+
+    /// <summary>In-memory store whose saves can be held until the test releases them.</summary>
+    private sealed class GatedStore : IDashboardStore
+    {
+        private readonly InMemoryDashboardStore _inner = new();
+        private TaskCompletionSource? _gate;
+
+        public void Hold() => _gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Release() => _gate?.TrySetResult();
+
+        public Task<DashboardCollection?> LoadAsync(string ownerKey, CancellationToken ct = default)
+            => _inner.LoadAsync(ownerKey, ct);
+
+        public async Task SaveAsync(string ownerKey, DashboardCollection collection, CancellationToken ct = default)
+        {
+            if (_gate is { } gate) await gate.Task;
+            await _inner.SaveAsync(ownerKey, collection, ct);
+        }
+    }
+
+    [Fact]
     public void ToolbarComponent_Override_Replaces_The_Default_Toolbar_And_Actions_Flow()
     {
         var js = new RecordingJsRuntime();
