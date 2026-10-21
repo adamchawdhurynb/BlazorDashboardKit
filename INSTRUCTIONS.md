@@ -29,7 +29,7 @@ his repo.
 **Kukks's releases.** He tags each release (`v0.3.0`, ...) when he bumps the library's version.
 These are the updates we take.
 
-**The host app's own commits.** Each is one commit on `prod`, on top of Kukks's release:
+**The host app's own commits** on `prod`, alongside Kukks's code:
 
 | Commit | What it does | Used by the host app for |
 |---|---|---|
@@ -37,12 +37,15 @@ These are the updates we take.
 | fix: stop re-renders wiping GridStack's classes; no shrink on load | The grid container's class is fixed in markup and switched in JS; animation starts after the first layout | No flashing or shrinking on load |
 | fix: lock a widget in place instead of rebuilding the grid | Lock/unlock updates one widget instead of rebuilding the grid | `WidgetEditHeader`'s lock button |
 | feat: compact the grid when leaving edit mode | Done slides widgets up into free space and saves the result | Done |
+| feat: compact the grid live in edit mode | Widgets slide up into free space right after each drag, resize, add or remove, not only on Done | Arranging the dashboard |
 | feat: let the host replace the whole dashboard toolbar | `ToolbarTemplate` / `ToolbarComponent` and `DashboardToolbarContext` | `DashboardToolbar` (the page title, dashboard switcher and links) |
 | feat: add MaxDashboardNameLength | Renamed and imported names are cut to a limit | `MaxDashboardNameLength="30"` in `Home.razor` |
-| ci: test the prod branch and watch for upstream releases | `.github/workflows/prod.yml` (below) | Knowing when Kukks releases |
+| ci: test the prod branch and watch for upstream releases, and ci: open a pull request for each upstream release | `.github/workflows/prod.yml` (below) | Taking Kukks's releases |
 
-Each has tests in `tests/BlazorDashboardKit.Tests`. Keep new changes the same way: one commit per
-change, with a test. The fewer lines of Kukks's code we touch, the fewer conflicts each update brings.
+The C# changes have tests in `tests/BlazorDashboardKit.Tests`; the JS-only ones (the compaction
+and animation) are checked on the dashboard itself. Keep new changes the same way: one commit per
+change, with a test where one can be written. The fewer lines of Kukks's code we touch, the fewer
+conflicts each update brings.
 
 ## How updates arrive
 
@@ -109,5 +112,5 @@ After any update, build and run the host app and check:
 
 - it loads without flashing or shrinking
 - in Edit Dashboard you can drag, resize, lock, duplicate, remove and add widgets
-- widgets slide up into gaps
+- after a drag, resize or remove, widgets slide up into gaps straight away
 - switching, new, rename, export, import and delete dashboard all work
