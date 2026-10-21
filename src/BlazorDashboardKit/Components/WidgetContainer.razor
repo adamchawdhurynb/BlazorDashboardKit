@@ -62,14 +62,17 @@
         </div>
         }
     }
-    @* Inert in edit mode, so the widget's own links and buttons can't be clicked or tabbed to
-       while the dashboard is being arranged. display: contents keeps it out of the layout. *@
-    <div class="widget-body" inert="@EditMode">
     <ErrorBoundary @ref="_errorBoundary">
         <ChildContent>
-            <DynamicComponent @key="Placement.Id"
-                              Type="@Descriptor.ComponentType"
-                              Parameters="@GetWidgetParameters()" />
+            @* Inert while the dashboard is being arranged, when the host opts in (see IsInert),
+               so the widget's own links and buttons can't be clicked or tabbed to. Only the
+               widget is wrapped, so the error state's Retry stays usable. display: contents
+               keeps the wrapper out of the layout. *@
+            <div class="widget-body" inert="@IsInert">
+                <DynamicComponent @key="Placement.Id"
+                                  Type="@Descriptor.ComponentType"
+                                  Parameters="@GetWidgetParameters()" />
+            </div>
         </ChildContent>
         <ErrorContent Context="ex">
             @{
@@ -95,7 +98,6 @@
             }
         </ErrorContent>
     </ErrorBoundary>
-    </div>
 </div>
 
 @if (EditMode && ShowDebugInfo)
@@ -110,6 +112,8 @@
     [Parameter] public string UserId { get; set; } = string.Empty;
     [Parameter] public bool EditMode { get; set; }
     [Parameter] public bool WidgetEditMode { get; set; }
+    /// <summary>Make the widget's content inert in edit mode (see IsInert). Off by default.</summary>
+    [Parameter] public bool InertInEditMode { get; set; }
     [Parameter] public bool ShowDebugInfo { get; set; }
     /// <summary>Host is in read-only mode (no editing affordances).</summary>
     [Parameter] public bool ReadOnly { get; set; }
@@ -146,10 +150,16 @@
     // (static SSR / prerender — nothing can be interactive there, even an
     // AlwaysInteractive widget). Otherwise AlwaysInteractive widgets stay live;
     // the rest are read-only unless this widget is in its own edit sub-mode.
+    // An inert widget is also told it's read-only, so it never offers editing it can't reach.
     private bool ComputeReadonly()
-        => ReadOnly || !HostInteractive
+        => ReadOnly || !HostInteractive || IsInert
             ? true
             : (Descriptor.AlwaysInteractive ? false : (!EditMode || WidgetEditMode));
+
+    // Inert in edit mode when the host opts in, except for AlwaysInteractive widgets (meant to
+    // stay live) and while a widget is in its own edit sub-mode (it must be able to finish it).
+    private bool IsInert
+        => InertInEditMode && EditMode && !Descriptor.AlwaysInteractive && !WidgetEditMode;
 
     protected override void OnParametersSet()
     {

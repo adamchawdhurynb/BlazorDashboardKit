@@ -200,15 +200,65 @@ public class WidgetContainerTests : TestContext
         Assert.Contains("RO", cut.Find(".ro-probe").TextContent);
     }
 
+    private IRenderedComponent<BlazorDashboardKit.Components.WidgetContainer> RenderInert(
+        WidgetDescriptor descriptor, bool editMode, bool inertInEditMode, bool widgetEditMode = false)
+    {
+        Services.AddSingleton<IWidgetAccessControl, AllowAllWidgetAccessControl>();
+        return RenderComponent<BlazorDashboardKit.Components.WidgetContainer>(p => p
+            .Add(x => x.Placement, new WidgetPlacement { WidgetType = descriptor.Type })
+            .Add(x => x.Descriptor, descriptor)
+            .Add(x => x.EditMode, editMode)
+            .Add(x => x.WidgetEditMode, widgetEditMode)
+            .Add(x => x.InertInEditMode, inertInEditMode));
+    }
+
     [Theory]
     [InlineData(true, true)]
     [InlineData(false, false)]
-    public void Widget_Body_Is_Inert_Only_In_Edit_Mode(bool editMode, bool expectInert)
+    public void Opted_In_Widget_Body_Is_Inert_And_ReadOnly_Only_In_Edit_Mode(bool editMode, bool expectInert)
     {
         // While the dashboard is being arranged, the widget's own links and buttons
-        // must not be clickable or reachable by Tab.
-        var cut = Render(Probe(alwaysInteractive: false), editMode, readOnly: false, hostInteractive: true);
+        // must not be clickable or reachable by Tab, and the widget is told it's read-only.
+        var cut = RenderInert(Probe(alwaysInteractive: false), editMode, inertInEditMode: true);
         Assert.Equal(expectInert, cut.Find(".widget-body").HasAttribute("inert"));
-        Assert.NotNull(cut.Find(".widget-body .ro-probe")); // the widget renders inside it
+        Assert.Contains("RO", cut.Find(".widget-body .ro-probe").TextContent);
+    }
+
+    [Fact]
+    public void Widget_Body_Is_Never_Inert_Unless_The_Host_Opts_In()
+    {
+        // The default keeps the kit's own model: widgets are editable in edit mode.
+        var cut = RenderInert(Probe(alwaysInteractive: false), editMode: true, inertInEditMode: false);
+        Assert.False(cut.Find(".widget-body").HasAttribute("inert"));
+        Assert.Contains("RW", cut.Find(".ro-probe").TextContent);
+    }
+
+    [Fact]
+    public void AlwaysInteractive_Widget_Stays_Live_When_Opted_In()
+    {
+        var cut = RenderInert(Probe(alwaysInteractive: true), editMode: true, inertInEditMode: true);
+        Assert.False(cut.Find(".widget-body").HasAttribute("inert"));
+        Assert.Contains("RW", cut.Find(".ro-probe").TextContent);
+    }
+
+    [Fact]
+    public void Widget_In_Its_Own_Edit_Sub_Mode_Is_Not_Inert()
+    {
+        // Otherwise it could never finish (and Busy would keep Done disabled).
+        var cut = RenderInert(Probe(alwaysInteractive: false), editMode: true, inertInEditMode: true, widgetEditMode: true);
+        Assert.False(cut.Find(".widget-body").HasAttribute("inert"));
+    }
+
+    [Fact]
+    public void Error_State_Retry_Is_Not_Inert()
+    {
+        var descriptor = new WidgetDescriptor
+        {
+            Type = "Boom", Name = "Boom", Category = "T", ComponentType = typeof(ThrowingWidget)
+        };
+        var cut = RenderInert(descriptor, editMode: true, inertInEditMode: true);
+
+        var retry = cut.FindAll("button").First(b => b.TextContent.Trim() == "Retry");
+        Assert.Null(retry.Closest("[inert]"));
     }
 }

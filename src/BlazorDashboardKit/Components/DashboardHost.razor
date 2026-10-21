@@ -179,6 +179,7 @@ else
                                          UserId="@string.Empty"
                                          EditMode="EditMode"
                                          WidgetEditMode="_widgetEditMode"
+                                         InertInEditMode="InertWidgetsInEditMode"
                                          ShowDebugInfo="ShowDebugInfo"
                                          ReadOnly="ReadOnly"
                                          HostInteractive="_interactive"
@@ -235,6 +236,13 @@ else
     [Parameter] public bool ReadOnly { get; set; }
     /// <summary>Longest dashboard name allowed (renames and imports are trimmed to it). Null for no limit.</summary>
     [Parameter] public int? MaxDashboardNameLength { get; set; }
+    /// <summary>
+    /// Opt-in: in edit mode, make each widget's content inert (and read-only), so its own links
+    /// and buttons can't be clicked or tabbed to while the dashboard is arranged.
+    /// AlwaysInteractive widgets, and a widget in its own edit sub-mode, stay live. Off by
+    /// default, since widgets otherwise offer their own editing in edit mode.
+    /// </summary>
+    [Parameter] public bool InertWidgetsInEditMode { get; set; }
     /// <summary>Opt-in: show the per-widget placement debug label in edit mode. Off by default.</summary>
     [Parameter] public bool ShowDebugInfo { get; set; }
     /// <summary>Tune the grid (columns, cell height, margin, responsiveness). Defaults match the kit's built-in behaviour.</summary>
