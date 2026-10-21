@@ -3,8 +3,11 @@ name: Prod fork
 # This fork's own workflow; the upstream ones only run on main, which tracks Kukks's repo.
 # - test: builds and tests the prod branch on every push.
 # - upstream-release: every Monday (and on demand), checks Kukks/BlazorDashboardKit for a
-#   release tag (v*) newer than the one this branch is built on, and opens an issue when
-#   there is one. Scheduled runs only happen on the default branch, so prod must be it.
+#   release tag (v*) that prod doesn't have yet. When there is one, it merges the release
+#   into a new update/<tag> branch, runs the tests, and opens a pull request into prod for
+#   someone to review and merge. It never merges the PR. If the release conflicts with our
+#   changes, the tests fail, or the PR can't be opened, it opens an issue instead.
+#   Scheduled runs only happen on the default branch, so prod must be it.
 
 on:
   push:
@@ -15,7 +18,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   test:
@@ -31,53 +33,137 @@ jobs:
   upstream-release:
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write       # push the update/<tag> branch (a ruleset keeps it off prod)
+      pull-requests: write  # open the PR
+      issues: write         # report a release that needs merging by hand
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: prod
           fetch-depth: 0
 
-      - name: Compare with the newest upstream release
+      - name: Check for a new upstream release
         id: check
         run: |
           git fetch --no-tags https://github.com/Kukks/BlazorDashboardKit.git '+refs/tags/v*:refs/tags/v*'
           latest=$(git tag -l 'v*' --sort=-v:refname | head -n1)
           base=$(git describe --tags --abbrev=0 --match 'v*' HEAD)
+          branch="update/$latest"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
           if git merge-base --is-ancestor "$latest" HEAD; then
             echo "Up to date: built on $base, newest upstream release is $latest."
-            echo "behind=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Behind: built on $base, newest upstream release is $latest."
-            echo "behind=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Open an issue for the new release
-        if: steps.check.outputs.behind == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          LATEST: ${{ steps.check.outputs.latest }}
-          BASE: ${{ steps.check.outputs.base }}
-        run: |
-          title="Upstream release $LATEST is available"
-          if gh issue list --state all --search "\"$title\" in:title" --json number --jq '.[].number' | grep -q .; then
-            echo "An issue for $LATEST already exists."
             exit 0
           fi
-          gh issue create --title "$title" --body "$(cat <<EOF
-          Kukks/BlazorDashboardKit has released **$LATEST**. The \`prod\` branch is built on **$BASE**.
+          # One PR or issue per release: skip if an earlier run already dealt with this one.
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null \
+            || [ -n "$(gh pr list --state all --head "$branch" --json number --jq '.[].number')" ] \
+            || [ -n "$(gh issue list --state all --search "\"$latest\" in:title" --json number --jq '.[].number')" ]; then
+            echo "Behind: built on $base, newest upstream release is $latest. Already handled; see the fork's pull requests and issues."
+            exit 0
+          fi
+          echo "Behind: built on $base, newest upstream release is $latest."
+          echo "update=true" >> "$GITHUB_OUTPUT"
 
-          What changed: https://github.com/Kukks/BlazorDashboardKit/compare/$BASE...$LATEST (see also CHANGELOG.md).
+      - name: Merge the release into an update branch
+        id: merge
+        if: steps.check.outputs.update == 'true'
+        env:
+          LATEST: ${{ steps.check.outputs.latest }}
+          BRANCH: ${{ steps.check.outputs.branch }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          if git merge --no-edit -m "Merge upstream release $LATEST" "$LATEST"; then
+            echo "result=merged" >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "conflicts<<CONFLICTS"
+              git diff --name-only --diff-filter=U | sed 's/^/- `/; s/$/`/'
+              echo "CONFLICTS"
+            } >> "$GITHUB_OUTPUT"
+            git merge --abort
+            echo "result=conflict" >> "$GITHUB_OUTPUT"
+          fi
 
-          To take it, in the clone under the host app's \`src/BlazorDashboardKit-repo\`:
+      - uses: actions/setup-dotnet@v4
+        if: steps.merge.outputs.result == 'merged'
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Test the merged code
+        id: test
+        if: steps.merge.outputs.result == 'merged'
+        continue-on-error: true
+        run: dotnet test tests/BlazorDashboardKit.Tests/BlazorDashboardKit.Tests.csproj --configuration Release
+
+      - name: Push the branch and open a pull request
+        id: pr
+        if: steps.merge.outputs.result == 'merged' && steps.test.outcome == 'success'
+        continue-on-error: true
+        env:
+          LATEST: ${{ steps.check.outputs.latest }}
+          BASE: ${{ steps.check.outputs.base }}
+          BRANCH: ${{ steps.check.outputs.branch }}
+        run: |
+          git push origin "$BRANCH"
+          gh pr create --base prod --head "$BRANCH" \
+            --title "Update to upstream release $LATEST" \
+            --body "$(cat <<EOF
+          Kukks/BlazorDashboardKit has released **$LATEST**; \`prod\` is on **$BASE**.
+
+          This merges it in. It merged without conflicts and the kit's tests pass ([run]($RUN_URL)).
+
+          - What changed upstream: https://github.com/Kukks/BlazorDashboardKit/compare/$BASE...$LATEST
+          - Before merging, check the host app's dashboard with this branch if the release touches
+            \`DashboardHost.razor\`, \`dashboard-interop.js\` or \`OverrideContexts.cs\`.
+          - After merging: \`git pull\` in the host app's \`src/BlazorDashboardKit-repo\`, rebuild the host app.
+          - To skip this release, close this PR.
+          EOF
+          )"
+
+      - name: Report a release that needs merging by hand
+        if: >-
+          steps.check.outputs.update == 'true' && (
+            steps.merge.outputs.result == 'conflict' ||
+            steps.test.outcome == 'failure' ||
+            steps.pr.outcome == 'failure')
+        env:
+          LATEST: ${{ steps.check.outputs.latest }}
+          BASE: ${{ steps.check.outputs.base }}
+          MERGE_RESULT: ${{ steps.merge.outputs.result }}
+          CONFLICTS: ${{ steps.merge.outputs.conflicts }}
+          TEST_OUTCOME: ${{ steps.test.outcome }}
+        run: |
+          if [ "$MERGE_RESULT" = "conflict" ]; then
+            reason="Merging it into \`prod\` conflicts with our changes in:"$'\n\n'"$CONFLICTS"
+          elif [ "$TEST_OUTCOME" = "failure" ]; then
+            reason="It merges without conflicts, but the kit's tests fail afterwards ([run]($RUN_URL))."
+          else
+            reason="It merges and the tests pass, but the workflow couldn't push the branch or open the pull request ([run]($RUN_URL)). GitHub doesn't let workflows push changes to \`.github/workflows\`, so this happens when the release changes those files. It also happens if *Allow GitHub Actions to create and approve pull requests* is off in the fork's Actions settings."
+          fi
+          gh issue create --title "Upstream release $LATEST needs merging by hand" --body "$(cat <<EOF
+          Kukks/BlazorDashboardKit has released **$LATEST**; \`prod\` is on **$BASE**.
+
+          $reason
+
+          What changed upstream: https://github.com/Kukks/BlazorDashboardKit/compare/$BASE...$LATEST
+
+          To merge it by hand, in the host app's \`src/BlazorDashboardKit-repo\` (see INSTRUCTIONS.md):
 
           \`\`\`
+          git checkout prod
+          git pull
           git fetch upstream --tags
-          git rebase $LATEST
+          git merge $LATEST
           dotnet test tests/BlazorDashboardKit.Tests/BlazorDashboardKit.Tests.csproj
-          git push --force-with-lease
+          git push
           \`\`\`
-
-          Then rebuild the host app and check the dashboard.
           EOF
           )"

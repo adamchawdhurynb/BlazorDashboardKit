@@ -44,54 +44,70 @@ These are the updates we take.
 Each has tests in `tests/BlazorDashboardKit.Tests`. Keep new changes the same way: one commit per
 change, with a test. The fewer lines of Kukks's code we touch, the fewer conflicts each update brings.
 
-## How we know an update is needed
+## How updates arrive
 
 The **Prod fork** workflow (`.github/workflows/prod.yml`) runs every **Monday at 13:00 UTC**.
-It compares Kukks's newest release tag with the one `prod` is built on. When there's a newer
-one, it **opens an issue** in the fork titled *"Upstream release vX.Y.Z is available"*, with a
-link to what changed. It opens one issue per release.
+It compares Kukks's newest release tag with the ones `prod` already has. When there's a new one,
+it merges the release into a new branch, `update/<tag>`, runs the kit's tests, and **opens a pull
+request into `prod`** titled *"Update to upstream release vX.Y.Z"*.
 
-- To be emailed about these issues, click **Watch → Custom → Issues** on the fork's GitHub page.
+**The pull request is never merged automatically.** Nothing changes in `prod`, or in the host app,
+until someone clicks **Merge**. A ruleset on `prod` stops the workflow from pushing to it
+directly.
+
+If the release can't be merged automatically (it conflicts with our changes, the tests fail
+afterwards, or it changes files under `.github/workflows`, which GitHub won't let a workflow push),
+the workflow opens an **issue** instead: *"Upstream release vX.Y.Z needs merging by hand"*, saying
+why. Either way, there's one PR or issue per release.
+
+- To be emailed about these, click **Watch → Custom** on the fork's GitHub page and tick
+  **Pull requests** and **Issues**.
 - To check right away: **Actions → Prod fork → Run workflow**. The log says "Up to date" or "Behind".
 
 The same workflow also runs the kit's tests whenever something is pushed to `prod`.
 
-You don't have to take every release straight away. Read what changed first, then decide.
-
 ## How to update
 
-All commands run in `src/BlazorDashboardKit-repo`. `v0.3.0` stands for the new release's tag, and
-`v0.2.2` for the one we're on now.
+### When there's a pull request
 
-1. **Get Kukks's new release.**
-   ```
-   git checkout prod
-   git pull
-   git fetch upstream --tags
-   ```
-2. **Read what changed:** `git log --oneline v0.2.2..v0.3.0`, the compare link in the issue, and
-   Kukks's `CHANGELOG.md`. Look out for changes to `DashboardHost.razor`,
-   `wwwroot/dashboard-interop.js` and `OverrideContexts.cs`. That's where our commits are, so
-   that's where conflicts will come from.
-3. **Move our commits onto the new release.**
-   ```
-   git rebase v0.3.0
-   ```
-   This replays the host app's commits, one at a time, on top of Kukks's new code.
-   - **If it stops on a conflict**, git names the files. Fix each so it keeps both Kukks's new
-     behaviour and our change, then `git add <file>` and `git rebase --continue`. In Visual
-     Studio's merge editor, *Current* is Kukks's new code and *Incoming* is our commit (the reverse
-     of what you'd expect).
-   - If Kukks has fixed the same thing one of our commits does, `git rebase --skip` drops ours.
-   - `git rebase --abort` gives up and puts everything back as it was.
-4. **Test.** Run `dotnet test tests/BlazorDashboardKit.Tests/BlazorDashboardKit.Tests.csproj`, then
-   build and run the host app and check the dashboard:
-   - it loads without flashing or shrinking
-   - in Edit Dashboard you can drag, resize, lock, duplicate, remove and add widgets
-   - Done slides widgets up into gaps
-   - switching, new, rename, export, import and delete dashboard all work
-5. **Push.** The rebase rewrote `prod`'s history, so it needs:
-   ```
-   git push --force-with-lease
-   ```
-6. **Close the issue** with a note like "Updated to v0.3.0".
+1. **Read what changed.** The PR links to Kukks's changes. If they touch `DashboardHost.razor`,
+   `wwwroot/dashboard-interop.js` or `OverrideContexts.cs` (where our changes are), check the host app's
+   dashboard with the PR's branch before merging. In `src/BlazorDashboardKit-repo`:
+   `git fetch origin` then `git checkout update/v0.3.0`, run the host app, and
+   `git checkout prod` afterwards.
+2. **Click Merge** on the PR, or close it to skip that release.
+3. **Pull it into the host app.** In `src/BlazorDashboardKit-repo`, run `git pull`, then rebuild the host app
+   and check the dashboard (list below).
+
+### When there's an issue instead
+
+Merge the release by hand. In `src/BlazorDashboardKit-repo`, with `v0.3.0` standing for the release:
+
+```
+git checkout prod
+git pull
+git fetch upstream --tags
+git merge v0.3.0
+```
+
+If git reports conflicts, it names the files. Fix each so it keeps both Kukks's new behaviour and
+our change (in Visual Studio's merge editor, *Current* is ours and *Incoming* is Kukks's), then
+`git add <file>` and `git commit`. `git merge --abort` gives up and puts everything back.
+
+Then test and push:
+
+```
+dotnet test tests/BlazorDashboardKit.Tests/BlazorDashboardKit.Tests.csproj
+git push
+```
+
+Close the issue with a note like "Merged v0.3.0 by hand".
+
+### Checking the dashboard
+
+After any update, build and run the host app and check:
+
+- it loads without flashing or shrinking
+- in Edit Dashboard you can drag, resize, lock, duplicate, remove and add widgets
+- widgets slide up into gaps
+- switching, new, rename, export, import and delete dashboard all work
