@@ -17,35 +17,18 @@ adamchawdhurynb/BlazorDashboardKit
               The default branch, and what the host app builds.
         │
         ▼
-The host app\src\BlazorDashboardKit-repo   a clone of this fork, on prod
+repos\BlazorDashboardKit   a clone of this fork, on prod, next to the host apps' folders
 ```
 
-The host app's `.csproj` references `src/BlazorDashboardKit-repo/src/BlazorDashboardKit/BlazorDashboardKit.csproj`,
-so the host app builds the kit from source. Changes only flow from Kukks to us; nothing here is sent to
+Each host app's `.csproj` references `..\..\..\BlazorDashboardKit\src\BlazorDashboardKit\BlazorDashboardKit.csproj`
+(from `repos\<HostApp>\src\<HostApp>.Web`), so the host app builds the kit from source and
+publishing copies it into the host app's output. Changes only flow from Kukks to us; nothing here is sent to
 his repo.
 
 ## Where changes come from
 
 **Kukks's releases.** He tags each release (`v0.3.0`, ...) when he bumps the library's version.
 These are the updates we take.
-
-**The host app's own commits** on `prod`, alongside Kukks's code:
-
-| Commit | What it does | Used by the host app for |
-|---|---|---|
-| feat: make widget content inert in edit mode | Widgets' own links and buttons can't be clicked or tabbed to while the dashboard is being arranged | Arranging the dashboard |
-| fix: stop re-renders wiping GridStack's classes; no shrink on load | The grid container's class is fixed in markup and switched in JS; animation starts after the first layout | No flashing or shrinking on load |
-| fix: lock a widget in place instead of rebuilding the grid | Lock/unlock updates one widget instead of rebuilding the grid | `WidgetEditHeader`'s lock button |
-| feat: compact the grid when leaving edit mode | Done slides widgets up into free space and saves the result | Done |
-| feat: compact the grid live in edit mode | Widgets slide up into free space right after each drag, resize, add or remove, not only on Done | Arranging the dashboard |
-| feat: let the host replace the whole dashboard toolbar | `ToolbarTemplate` / `ToolbarComponent` and `DashboardToolbarContext` | `DashboardToolbar` (the page title, dashboard switcher and links) |
-| feat: add MaxDashboardNameLength | Renamed and imported names are cut to a limit | `MaxDashboardNameLength="30"` in `Home.razor` |
-| ci: test the prod branch and watch for upstream releases, and ci: open a pull request for each upstream release | `.github/workflows/prod.yml` (below) | Taking Kukks's releases |
-
-The C# changes have tests in `tests/BlazorDashboardKit.Tests`; the JS-only ones (the compaction
-and animation) are checked on the dashboard itself. Keep new changes the same way: one commit per
-change, with a test where one can be written. The fewer lines of Kukks's code we touch, the fewer
-conflicts each update brings.
 
 ## How updates arrive
 
@@ -75,16 +58,16 @@ The same workflow also runs the kit's tests whenever something is pushed to `pro
 
 1. **Read what changed.** The PR links to Kukks's changes. If they touch `DashboardHost.razor`,
    `wwwroot/dashboard-interop.js` or `OverrideContexts.cs` (where our changes are), check the host app's
-   dashboard with the PR's branch before merging. In `src/BlazorDashboardKit-repo`:
+   dashboard with the PR's branch before merging. In `repos/BlazorDashboardKit`:
    `git fetch origin` then `git checkout update/v0.3.0`, run the host app, and
    `git checkout prod` afterwards.
 2. **Click Merge** on the PR, or close it to skip that release.
-3. **Pull it into the host app.** In `src/BlazorDashboardKit-repo`, run `git pull`, then rebuild the host app
+3. **Pull it into the host app.** In `repos/BlazorDashboardKit`, run `git pull`, then rebuild the host app
    and check the dashboard (list below).
 
 ### When there's an issue instead
 
-Merge the release by hand. In `src/BlazorDashboardKit-repo`, with `v0.3.0` standing for the release:
+Merge the release by hand. In `repos/BlazorDashboardKit`, with `v0.3.0` standing for the release:
 
 ```
 git checkout prod

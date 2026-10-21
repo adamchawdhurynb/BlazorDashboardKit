@@ -133,7 +133,7 @@ jobs:
           - What changed upstream: https://github.com/Kukks/BlazorDashboardKit/compare/$BASE...$LATEST
           - Before merging, check the host app's dashboard with this branch if the release touches
             \`DashboardHost.razor\`, \`dashboard-interop.js\` or \`OverrideContexts.cs\`.
-          - After merging: \`git pull\` in the host app's \`src/BlazorDashboardKit-repo\`, rebuild the host app.
+          - After merging: \`git pull\` in \`repos/BlazorDashboardKit\`, rebuild the host app.
           - To skip this release, close this PR.
           EOF
           )"
@@ -165,7 +165,7 @@ jobs:
 
           What changed upstream: https://github.com/Kukks/BlazorDashboardKit/compare/$BASE...$LATEST
 
-          To merge it by hand, in the host app's \`src/BlazorDashboardKit-repo\` (see INSTRUCTIONS.md):
+          To merge it by hand, in \`repos/BlazorDashboardKit\` (see INSTRUCTIONS.md):
 
           \`\`\`
           git checkout prod
