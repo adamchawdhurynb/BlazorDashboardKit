@@ -398,7 +398,7 @@ else
     {
         EditMode = false;
         _widgetEditMode = false;
-        // The grid compacts as edit mode ends; take its new positions before the one save.
+        // The grid compacted live while editing; take its final positions before the one save.
         var compacted = await JsInterop.SetEditModeAsync(false, Interactive, _disposeCts.Token);
         if (compacted is not null)
             ApplyGridChanges(compacted);

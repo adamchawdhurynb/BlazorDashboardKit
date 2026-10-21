@@ -19,6 +19,7 @@ let _grid = null;
 let _charts = {};
 let _dotNetHelper = null;
 let _changeBatch = null;
+let _float = true;
 
 // --- Lazy asset injection ---
 //
@@ -98,11 +99,12 @@ export async function initGrid(containerId, dotNetHelper, editMode, options) {
     // Fall back to the kit defaults so older callers / null still work.
     var o = options || {};
     var columns = o.columns || 12;
+    _float = (o.float == null ? true : o.float);
     var grid = globalThis.GridStack.init({
         column: columns,
         cellHeight: o.cellHeight || 146,
         margin: (o.margin == null ? 8 : o.margin),
-        float: (o.float == null ? true : o.float),
+        float: _float,
         // Off for the first layout; switched on below once it has been painted.
         animate: false,
         draggable: { handle: '.widget-drag-handle' },
@@ -154,7 +156,35 @@ export async function initGrid(containerId, dotNetHelper, editMode, options) {
         });
     });
 
+    // Compact once a drag or resize has landed (see compactSoon).
+    grid.on('dragstop resizestop', function () {
+        if (_grid === grid) compactSoon();
+    });
+
     _grid = grid;
+    if (editMode) compactSoon();
+}
+
+// Edit mode compacts the grid after every drag, resize, add and remove: turning float off
+// makes GridStack slide each widget straight up into any free space above it (same column,
+// no overlaps; locked widgets stay put), animated by its own transition, and float goes back
+// on so the next move places freely. Float stays on during the move itself: with gravity on
+// live, GridStack parks the placeholder at the compacted spot and the dropped widget snaps
+// there with no animation. Two frames let the drop paint where it landed before the slide.
+// The change event the compaction raises saves the new layout.
+function compactSoon() {
+    var grid = _grid;
+    requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+            if (_grid === grid && !grid.opts.staticGrid) compact(grid);
+        });
+    });
+}
+
+function compact(grid) {
+    if (!_float) return; // gravity already always on
+    grid.float(false);
+    grid.float(true);
 }
 
 // Every widget's position, in the shape OnGridChanged reads.
@@ -174,17 +204,17 @@ function collectLayout(grid) {
     return changes;
 }
 
-// Leaving edit mode compacts the grid: turning float off makes GridStack slide each widget
-// straight up into any free space above it (same column, no overlaps; locked widgets stay
-// put), animated by its own transition. Float goes back on so the next edit places freely.
-// Returns the compacted layout as JSON so the kit saves it in one go; the change event the
-// compaction raised is dropped, since it would only save the same layout again.
+// Entering edit mode compacts the grid (see compactSoon). Leaving it compacts once more, in
+// case a last move's compaction hasn't run yet, and returns the layout as JSON so the kit
+// saves it in one go; a change event still pending is dropped, since it would only save the
+// same layout again.
 export function setEditMode(editMode) {
     if (!_grid) return null;
     var layout = null;
-    if (!editMode) {
-        _grid.float(false);
-        _grid.float(true);
+    if (editMode) {
+        compactSoon();
+    } else {
+        compact(_grid);
         if (_changeBatch) {
             clearTimeout(_changeBatch);
             _changeBatch = null;
@@ -224,11 +254,13 @@ export function setWidgetLocked(id, locked) {
 export function addGridWidget(element) {
     if (!_grid || !element) return;
     _grid.makeWidget(element);
+    compactSoon();
 }
 
 export function removeGridWidget(element) {
     if (!_grid || !element) return;
     _grid.removeWidget(element, false); // false = don't remove DOM
+    compactSoon();
 }
 
 // --- Charts ---

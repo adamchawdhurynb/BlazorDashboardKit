@@ -19,6 +19,7 @@ Run after any change to the dashboard host, widgets, interop, or CSS. Exercise o
 - [ ] Adding a widget renders it with real size/position (GridStack instance present; `bdk-grid-static` cleared; item rect non-zero, a grid cell not full-width).
 - [ ] **Actions** dropdown opens; Export downloads JSON; Import loads a JSON file (lock state preserved round-trip); menu closes after each.
 - [ ] Drag a widget (edit mode) and resize it; positions/sizes persist after Done + reload.
+- [ ] Edit mode compacts live: dropping a widget below a gap, or shrinking/removing one above others, slides widgets up, animated, right after the drop/resize/remove (not only on Done); Done then moves nothing.
 - [ ] Remove (✕) needs a 2-step confirm (✓/↩); confirming deletes the widget and the grid re-lays-out. Cancel aborts.
 - [ ] Delete dashboard needs a 2-step confirm (Confirm delete / Cancel).
 - [ ] A widget's own controls (e.g. Notes "Edit") are clickable — NOT overlapped/hijacked by the edit header's ✕.

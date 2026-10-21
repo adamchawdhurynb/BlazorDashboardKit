@@ -70,8 +70,8 @@ public sealed class DashboardJsInterop : IAsyncDisposable
     }
 
     /// <summary>
-    /// Switches the grid in or out of edit mode. Leaving it compacts the grid and
-    /// returns the resulting layout as JSON (OnGridChanged's shape); otherwise null.
+    /// Switches the grid in or out of edit mode. While editing, the grid compacts live;
+    /// leaving returns the final layout as JSON (OnGridChanged's shape); otherwise null.
     /// </summary>
     public async Task<string?> SetEditModeAsync(bool editMode, bool interactive, CancellationToken ct)
     {

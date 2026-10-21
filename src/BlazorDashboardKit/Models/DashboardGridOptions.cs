@@ -16,7 +16,7 @@ public sealed class DashboardGridOptions
     /// <summary>Gap between widgets in pixels.</summary>
     public int Margin { get; set; } = 8;
 
-    /// <summary>Free placement (true) vs. gravity/compaction (false).</summary>
+    /// <summary>Free placement (true) vs. gravity/compaction (false) outside edit mode. Edit mode always compacts.</summary>
     public bool Float { get; set; } = true;
 
     /// <summary>Viewport width (px) at or below which the grid collapses to <see cref="MobileColumns"/>.</summary>
